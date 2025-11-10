@@ -7,8 +7,12 @@ and accounting are properly enabled and there is queue activity.
 """
 
 import json
+import sys
+import os
 from datetime import datetime, timezone
-from mq_stats_reader import MQStatsReader
+
+# Add parent directory to path to import from src
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
 def create_sample_statistics_data():
@@ -128,7 +132,7 @@ def create_sample_accounting_data():
                 "channel_name": "APP1.SVRCONN",
                 "connection_name": "192.168.1.100",
                 "application_name": "MyMQApplication",
-                "user_id": "atulk",
+                "user_id": "mquser",
                 "connect_count": 1,
                 "disconnect_count": 0
             },
@@ -184,7 +188,7 @@ def create_sample_accounting_data():
                 "channel_name": "APP1.SVRCONN",
                 "connection_name": "192.168.1.101",
                 "application_name": "AnotherMQApp",
-                "user_id": "atulk",
+                "user_id": "mquser",
                 "connect_count": 1,
                 "disconnect_count": 0
             },
@@ -214,11 +218,29 @@ def demo_with_sample_data():
     statistics_data = create_sample_statistics_data()
     accounting_data = create_sample_accounting_data()
     
-    # Create a mock reader to use the formatting function
-    reader = MQStatsReader()
+    # Format the sample data as JSON
+    sample_output = {
+        "collection_info": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "queue_manager": "MQQM1",
+            "channel": "APP1.SVRCONN",
+            "statistics_count": len(statistics_data),
+            "accounting_count": len(accounting_data)
+        },
+        "statistics_data": statistics_data,
+        "accounting_data": accounting_data,
+        "summary": {
+            "total_messages": len(statistics_data) + len(accounting_data),
+            "readers_identified": 2,
+            "writers_identified": 3,
+            "queue_operations": {
+                "total_gets": sum(stat.get("queue_operations", {}).get("get_count", 0) for stat in statistics_data),
+                "total_puts": sum(stat.get("queue_operations", {}).get("put_count", 0) for stat in statistics_data)
+            }
+        }
+    }
     
-    # Format the sample data
-    output = reader.format_output(statistics_data, accounting_data)
+    output = json.dumps(sample_output, indent=2)
     
     print("Sample JSON Output (as would be generated with real MQ statistics):")
     print("=" * 60)
