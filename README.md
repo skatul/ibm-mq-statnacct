@@ -1,17 +1,16 @@
 # IBM MQ Statistics and Accounting Queue Reader
 
-This Python program reads IBM MQ statistics and accounting data from system queues, identifies queue readers and writers, resets statistics after reading, and outputs the data in JSON format with timestamps for insertion into time series databases.
+A Python application that reads IBM MQ statistics and accounting data from system queues, identifies queue readers and writers, and outputs structured JSON data with timestamps for time series database integration.
 
 ## Features
 
-- **Statistics Collection**: Reads from `SYSTEM.ADMIN.STATISTICS.QUEUE` to collect queue, channel, and queue manager statistics
-- **Accounting Data**: Reads from `SYSTEM.ADMIN.ACCOUNTING.QUEUE` to track connection and operation accounting information
-- **Reader/Writer Identification**: Analyzes message data to identify applications that read from or write to queues
-- **Statistics Reset**: Optionally resets statistics after reading to ensure fresh data collection
-- **JSON Output**: Formats all data in JSON with ISO timestamps suitable for time series databases
-- **PCF Message Parsing**: Includes a comprehensive PCF (Programmable Command Format) parser for structured message analysis
-- **Logging**: Comprehensive logging with both file and console output
-- **Error Handling**: Robust error handling for MQ connection and message processing issues
+- **Statistics Collection**: Reads from `SYSTEM.ADMIN.STATISTICS.QUEUE` and `SYSTEM.ADMIN.ACCOUNTING.QUEUE`
+- **Reader/Writer Identification**: Analyzes PCF messages to identify applications accessing queues
+- **JSON Output**: Structured JSON format with ISO timestamps for time series databases
+- **Continuous Monitoring**: Configurable interval-based data collection
+- **Statistics Reset**: Optional statistics reset after reading for fresh data collection
+- **PCF Message Parsing**: Comprehensive parser for IBM MQ Programmable Command Format messages
+- **Error Handling**: Robust error handling with detailed logging
 
 ## Prerequisites
 
@@ -94,7 +93,7 @@ python main.py --verbose
 python main.py --format influxdb
 ```
 
-### Continuous Monitoring (NEW!)
+### Continuous Monitoring
 
 Run continuous monitoring for regular data collection:
 
@@ -104,9 +103,6 @@ python main.py --continuous
 
 # Custom interval and limited cycles
 python main.py --continuous --interval 30 --max-cycles 10
-
-# Production monitoring with verbose output
-python main.py --continuous --interval 300 --verbose
 ```
 
 Or run directly from source:
@@ -199,16 +195,11 @@ The program outputs structured JSON data like this:
 
 ### Running Tests
 
-The project includes a comprehensive test suite using pytest:
+Run the test suite using pytest:
 
 ```powershell
 # Run all tests
 python -m pytest
-
-# Run specific test suites
-python -m pytest tests/test_config.py -v          # Configuration tests
-python -m pytest tests/test_pcf_parser.py -v     # PCF parser tests
-python -m pytest tests/test_mq_reader_workable.py -v  # MQ reader tests
 
 # Run with coverage
 python -m pytest --cov=src --cov-report=html
@@ -216,46 +207,18 @@ python -m pytest --cov=src --cov-report=html
 
 ### Test Connection
 
-Test your IBM MQ connection:
-
 ```powershell
 python examples/test_connection.py
 ```
 
-### Generate Sample Activity
-
-Create test activity in your IBM MQ queues:
-
-```powershell
-# Simple activity generation
-python scripts/sample-stat-creation/simple_activity.py
-
-# Advanced activity patterns
-python scripts/sample-stat-creation/generate_activity.py
-```
-
-### Sample Outputs
-
-Check the `sample-outputs/` directory for example JSON files showing the expected output format.
-
 ## Time Series Database Integration
 
-The JSON output is designed for easy insertion into time series databases like:
+The JSON output is designed for easy integration with time series databases:
 
-- **InfluxDB**: Use the timestamp field as the time dimension
-- **Prometheus**: Convert metrics to Prometheus format
-- **Elasticsearch**: Use as time-based indices
-- **TimescaleDB**: Insert directly using timestamp fields
-
-Example InfluxDB integration:
-```python
-# Convert to InfluxDB line protocol
-measurement = "mq_statistics"
-tags = f"queue_manager={data['collection_info']['queue_manager']}"
-fields = f"get_count={queue_ops['get_count']},put_count={queue_ops['put_count']}"
-timestamp = data['collection_info']['timestamp']
-line = f"{measurement},{tags} {fields} {timestamp}"
-```
+- **InfluxDB**: Direct insertion using timestamp fields
+- **Prometheus**: Metrics conversion examples provided
+- **Elasticsearch**: Time-based document indexing
+- **TimescaleDB**: Compatible timestamp format
 
 ## Files Description
 
@@ -291,32 +254,23 @@ The program handles common issues:
 
 ### Common Issues
 
-1. **Connection Failed**: Check queue manager name, channel, and network connectivity
+1. **Connection Failed**: Verify queue manager name, channel, and network connectivity
 2. **Permission Denied**: Ensure user has access to statistics and accounting queues  
 3. **No Messages**: Statistics/accounting may not be enabled on the queue manager
-4. **Parse Errors**: Some message formats may not be fully supported
 
-### Enable Statistics
-
-To enable statistics collection on IBM MQ:
+### Enable Statistics Collection
 
 ```
+runmqsc QMGR_NAME
 ALTER QMGR STATQ(ON) STATCHL(ON) STATACLS(ON)
-ALTER QLOCAL('YOUR.QUEUE') STATQ(ON)
-```
-
-### Enable Accounting
-
-To enable accounting:
-
-```  
 ALTER QMGR ACCTQ(ON) ACCTCONO(ENABLED) ACCTMQI(ON)
+END
 ```
 
 ## License
 
-This project is provided as-is for educational and development purposes.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Feel free to submit issues, feature requests, or pull requests to improve the functionality.
+Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
