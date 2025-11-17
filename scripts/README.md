@@ -1,4 +1,4 @@
-# Scripts Directory
+git # Scripts Directory
 
 This directory contains utility scripts and tools for the IBM MQ Stats Reader project.
 
