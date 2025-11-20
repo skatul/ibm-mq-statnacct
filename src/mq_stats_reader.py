@@ -20,6 +20,8 @@ try:
     from .pcf_parser import PCFParser
 except ImportError:
     # For direct execution or when not imported as a package
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
     from config import MQ_CONFIG, QUEUE_CONFIG, STATS_CONFIG
     from pcf_parser import PCFParser
 
@@ -373,8 +375,11 @@ class MQStatsReader:
             self.logger.error("Data error during statistics reset: %s", e)
             return False
     
-    def format_output(self, statistics_data: List[Dict], accounting_data: List[Dict]) -> str:
+    def format_output(self, statistics_data: List[Dict], accounting_data: Optional[List[Dict]] = None, output_format: str = "json") -> str:
         """Format the collected data as JSON with timestamps"""
+        if accounting_data is None:
+            accounting_data = []
+            
         output_data = {
             "collection_info": {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -388,10 +393,29 @@ class MQStatsReader:
             "summary": self._generate_summary(statistics_data, accounting_data)
         }
         
-        if STATS_CONFIG.get("output_format", "json").lower() == "json":
+        format_type = output_format or STATS_CONFIG.get("output_format", "json")
+        if format_type.lower() == "json":
             return json.dumps(output_data, indent=2, ensure_ascii=False)
         else:
             return str(output_data)
+    
+    def collect_statistics(self) -> List[Dict]:
+        """Collect statistics data from MQ"""
+        try:
+            statistics_data = self.read_statistics_queue()
+            return statistics_data if statistics_data else []
+        except Exception as e:
+            self.logger.error("Error collecting statistics: %s", e)
+            return []
+    
+    def collect_accounting(self) -> List[Dict]:
+        """Collect accounting data from MQ"""
+        try:
+            accounting_data = self.read_accounting_queue()
+            return accounting_data if accounting_data else []
+        except Exception as e:
+            self.logger.error("Error collecting accounting data: %s", e)
+            return []
     
     def _generate_summary(self, statistics_data: List[Dict], accounting_data: List[Dict]) -> Dict[str, Any]:
         """Generate a summary of the collected data"""
