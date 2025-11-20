@@ -81,7 +81,7 @@ class TestMQStatsReader:
         self.mock_pymqi.CMQC.MQCHT_CLNTCONN = 6
         self.mock_pymqi.CMQC.MQXPT_TCP = 1
         
-        reader = self.MQStatsReader()
+        reader = MQStatsReader()
         result = reader.connect_to_mq()
         
         assert result is True
@@ -99,7 +99,7 @@ class TestMQStatsReader:
         self.mock_pymqi.MQMIError = mock_error
         self.mock_pymqi.QueueManager.side_effect = mock_error
         
-        reader = self.MQStatsReader()
+        reader = MQStatsReader()
         result = reader.connect_to_mq()
         
         assert result is False
@@ -117,7 +117,7 @@ class TestMQStatsReader:
         self.mock_pymqi.Queue.return_value = mock_queue
         self.mock_pymqi.CMQC.MQRC_NO_MSG_AVAILABLE = 2033
         
-        reader = self.MQStatsReader()
+        reader = MQStatsReader()
         reader.qmgr = MagicMock()
         
         result = reader.read_statistics_queue()
@@ -150,7 +150,7 @@ class TestMQStatsReader:
         self.mock_pymqi.GMO.return_value = MagicMock()
         self.mock_pymqi.CMQC.MQRC_NO_MSG_AVAILABLE = 2033
         
-        reader = self.MQStatsReader()
+        reader = MQStatsReader()
         reader.qmgr = MagicMock()
         
         result = reader.read_statistics_queue()
@@ -163,7 +163,7 @@ class TestMQStatsReader:
             'config': MagicMock(**self.mock_config),
             'pcf_parser': MagicMock()
         }):
-            reader = self.MQStatsReader()
+            reader = MQStatsReader()
             
             stats_data = [{'message_type': 'statistics', 'queue_name': 'TEST.QUEUE'}]
             accounting_data = [{'message_type': 'accounting', 'channel_name': 'TEST.SVRCONN'}]
@@ -185,7 +185,7 @@ class TestMQStatsReader:
             'config': MagicMock(**self.mock_config),
             'pcf_parser': MagicMock()
         }):
-            reader = self.MQStatsReader()
+            reader = MQStatsReader()
             
             stats_data = [
                 {'statistics_type': 'queue_statistics'},
@@ -220,7 +220,7 @@ class TestMQStatsReader:
             'config': MagicMock(**self.mock_config),
             'pcf_parser': MagicMock()
         }):
-            reader = self.MQStatsReader()
+            reader = MQStatsReader()
             
             # Mock PCF parser
             mock_pcf_data = {
@@ -255,7 +255,7 @@ class TestMQStatsReader:
             'config': MagicMock(**self.mock_config),
             'pcf_parser': MagicMock()
         }):
-            reader = self.MQStatsReader()
+            reader = MQStatsReader()
             
             # Mock PCF parser to return None (invalid message)
             reader.pcf_parser.parse_message.return_value = None
@@ -284,7 +284,7 @@ class TestMQStatsReader:
         mock_modules.__setitem__('config', MagicMock(**config_with_reset_disabled))
         mock_modules.__setitem__('pcf_parser', MagicMock())
         
-        reader = self.MQStatsReader()
+        reader = MQStatsReader()
         result = reader.reset_statistics()
         
         assert result is True
@@ -295,7 +295,7 @@ class TestMQStatsReader:
             'config': MagicMock(**self.mock_config),
             'pcf_parser': MagicMock()
         }):
-            reader = self.MQStatsReader()
+            reader = MQStatsReader()
             
             # Test queue statistics pattern
             queue_msg = b'test' + b'515441545354495155455545' + b'test'  # Contains "STATSQUEUE" in hex

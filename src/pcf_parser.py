@@ -8,7 +8,11 @@ PCF messages contain structured data about MQ operations, connections, and stati
 import struct
 from typing import Dict, Any, List, Optional
 import logging
-from . import mq_constants as mqc
+try:
+    from . import mq_constants as mqc
+except ImportError:
+    # Direct import when running as script
+    import mq_constants as mqc
 
 
 class PCFParser:
@@ -21,10 +25,14 @@ class PCFParser:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
     
-    def parse_message(self, message: bytes) -> Optional[Dict[str, Any]]:
-        """Parse a complete PCF message"""
-        if len(message) < self.PCF_HEADER_SIZE:
-            self.logger.warning("Message too short for PCF header")
+    def parse_message(self, message) -> Optional[Dict[str, Any]]:
+        """Parse a complete PCF message (bytes or dict)"""
+        # Handle backwards compatibility - if input is already a dict, return it processed
+        if isinstance(message, dict):
+            return self._process_dict_message(message)
+        
+        if message is None or not isinstance(message, bytes) or len(message) < self.PCF_HEADER_SIZE:
+            self.logger.warning("Message too short for PCF header or not bytes")
             return None
         
         try:
@@ -33,7 +41,7 @@ class PCFParser:
             if not header:
                 return None
             
-            # Parse parameters
+            # Parse parameters with enhanced error handling
             parameters = self._parse_pcf_parameters(
                 message[self.PCF_HEADER_SIZE:], 
                 header.get('parameter_count', 0)
@@ -48,6 +56,41 @@ class PCFParser:
         except (struct.error, ValueError, IndexError) as e:
             self.logger.error("Error parsing PCF message: %s", e)
             return None
+    
+    def _process_dict_message(self, message_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a message that's already in dictionary format"""
+        # Extract meaningful information from dictionary-based input
+        processed = {
+            'message_type': message_dict.get('message_type', 'unknown'),
+            'parameters': message_dict.get('parameters', {}),
+            'message_size': len(str(message_dict))
+        }
+        
+        # Convert parameters dict to list format if needed
+        if isinstance(processed['parameters'], dict):
+            param_list = []
+            for param_id, value in processed['parameters'].items():
+                if isinstance(param_id, int):
+                    param_list.append({
+                        'parameter_id': param_id,
+                        'parameter_name': mqc.get_parameter_name(param_id),
+                        'value': value,
+                        'parameter_type': self._guess_parameter_type(value)
+                    })
+            processed['parameters'] = param_list
+        
+        return processed
+    
+    def _guess_parameter_type(self, value) -> int:
+        """Guess parameter type from value"""
+        if isinstance(value, int):
+            return mqc.MQCFT_INTEGER
+        elif isinstance(value, str):
+            return mqc.MQCFT_STRING
+        elif isinstance(value, list):
+            return mqc.MQCFT_INTEGER_LIST
+        else:
+            return mqc.MQCFT_NONE
     
     def _parse_pcf_header(self, header_bytes: bytes) -> Optional[Dict[str, Any]]:
         """Parse PCF message header"""
@@ -89,25 +132,45 @@ class PCFParser:
 
     
     def _parse_pcf_parameters(self, param_bytes: bytes, param_count: int) -> List[Dict[str, Any]]:
-        """Parse PCF parameters from the message body"""
+        """Parse PCF parameters from the message body with enhanced error handling"""
         parameters = []
         offset = 0
+        parsed_count = 0
+        max_reasonable_params = min(param_count, 1000)  # Safety limit
         
-        for _ in range(param_count):
+        while parsed_count < max_reasonable_params and offset < len(param_bytes):
+            # Ensure we have enough bytes for parameter header
             if offset + self.PCF_PARAMETER_HEADER_SIZE > len(param_bytes):
+                self.logger.debug(f"Not enough bytes for parameter header at offset {offset}")
                 break
             
+            # Parse single parameter with validation
             param = self._parse_single_parameter(param_bytes[offset:])
             if param:
-                parameters.append(param)
-                offset += param.get('total_length', self.PCF_PARAMETER_HEADER_SIZE)
+                # Validate parameter structure
+                param_length = param.get('total_length', self.PCF_PARAMETER_HEADER_SIZE)
+                
+                # Sanity check parameter length
+                if param_length < self.PCF_PARAMETER_HEADER_SIZE or param_length > len(param_bytes) - offset:
+                    self.logger.warning(f"Invalid parameter length {param_length} at offset {offset}")
+                    break
+                
+                # Only add valid parameters (skip obviously corrupted ones)
+                if self._is_valid_parameter(param):
+                    parameters.append(param)
+                
+                offset += param_length
+                parsed_count += 1
             else:
-                break
+                # Try to skip to next 4-byte boundary in case of alignment issues
+                offset = ((offset + 3) // 4) * 4 + 4
+                if offset >= len(param_bytes):
+                    break
         
         return parameters
     
     def _parse_single_parameter(self, param_bytes: bytes) -> Optional[Dict[str, Any]]:
-        """Parse a single PCF parameter"""
+        """Parse a single PCF parameter with enhanced validation"""
         if len(param_bytes) < self.PCF_PARAMETER_HEADER_SIZE:
             return None
         
@@ -118,13 +181,24 @@ class PCFParser:
             
             param_id, param_type = struct.unpack('>LL', param_bytes[:8])
             
+            # Skip obviously corrupted parameters (common corruption patterns)
+            if param_id == 0 and param_type == 0:
+                return {'parameter_id': param_id, 'parameter_type': param_type, 
+                       'parameter_name': 'PADDING_OR_CORRUPT', 'value': 'skipped', 'total_length': 8}
+            
+            # Validate parameter type is in reasonable range
+            if param_type > 1000000:  # Extremely large type suggests corruption
+                return {'parameter_id': param_id, 'parameter_type': param_type,
+                       'parameter_name': mqc.get_parameter_name(param_id), 
+                       'value': f'corrupt_type_{param_type}', 'total_length': 8}
+            
             parameter = {
                 'parameter_id': param_id,
                 'parameter_type': param_type,
                 'parameter_name': mqc.get_parameter_name(param_id)
             }
             
-            # Parse parameter value based on type
+            # Parse parameter value based on type with better error handling
             if param_type == mqc.MQCFT_INTEGER:
                 parameter.update(self._parse_integer_parameter(param_bytes))
             elif param_type == mqc.MQCFT_STRING:
@@ -134,38 +208,68 @@ class PCFParser:
             elif param_type == mqc.MQCFT_INTEGER_LIST:
                 parameter.update(self._parse_integer_list_parameter(param_bytes))
             else:
+                # Handle unknown but potentially valid parameter types
                 parameter['value'] = f'unsupported_type_{param_type}'
-                parameter['total_length'] = self.PCF_PARAMETER_HEADER_SIZE
+                parameter['total_length'] = max(self.PCF_PARAMETER_HEADER_SIZE, 12)  # Minimum safe length
             
             return parameter
             
         except struct.error as e:
-            self.logger.error("Error parsing PCF parameter: %s", e)
+            self.logger.debug("Error parsing PCF parameter: %s", e)
+            return None
+        except Exception as e:
+            self.logger.warning("Unexpected error parsing parameter: %s", e)
             return None
     
     def _parse_integer_parameter(self, param_bytes: bytes) -> Dict[str, Any]:
-        """Parse integer parameter (12 bytes total)"""
+        """Parse integer parameter (12 bytes total) with validation"""
         # Integer parameter: 8-byte header + 4-byte value
-        if len(param_bytes) >= 12:
-            value = struct.unpack('>L', param_bytes[8:12])[0]
-            return {'value': value, 'total_length': 12}
-        return {'value': 0, 'total_length': 12}
+        try:
+            if len(param_bytes) >= 12:
+                value = struct.unpack('>L', param_bytes[8:12])[0]
+                return {'value': value, 'total_length': 12}
+            else:
+                self.logger.debug("Integer parameter too short")
+                return {'value': 0, 'total_length': 12}
+        except struct.error as e:
+            self.logger.debug(f"Error parsing integer parameter: {e}")
+            return {'value': 0, 'total_length': 12}
     
     def _parse_string_parameter(self, param_bytes: bytes) -> Dict[str, Any]:
-        """Parse string parameter"""
+        """Parse string parameter with enhanced validation"""
         if len(param_bytes) >= 12:
             # String parameter: 8-byte header + 4-byte length + string data
-            str_length = struct.unpack('>L', param_bytes[8:12])[0]
-            total_length = 12 + str_length
-            
-            if len(param_bytes) >= total_length:
-                try:
-                    value = param_bytes[12:12+str_length].decode('utf-8').rstrip('\x00')
-                    return {'value': value, 'total_length': total_length}
-                except UnicodeDecodeError:
-                    # Try with latin-1 if utf-8 fails
-                    value = param_bytes[12:12+str_length].decode('latin-1').rstrip('\x00')
-                    return {'value': value, 'total_length': total_length}
+            try:
+                str_length = struct.unpack('>L', param_bytes[8:12])[0]
+                
+                # Validate string length is reasonable
+                if str_length > 65536:  # 64KB limit for strings
+                    return {'value': f'invalid_string_length_{str_length}', 'total_length': 12}
+                
+                # Ensure we have enough data
+                total_length = 12 + ((str_length + 3) // 4) * 4  # 4-byte aligned
+                if len(param_bytes) < total_length:
+                    return {'value': 'truncated_string', 'total_length': 12}
+                
+                if str_length > 0 and len(param_bytes) >= 12 + str_length:
+                    try:
+                        # Try UTF-8 first
+                        value = param_bytes[12:12+str_length].decode('utf-8').rstrip('\x00 ')
+                        return {'value': value, 'total_length': total_length}
+                    except UnicodeDecodeError:
+                        try:
+                            # Try latin-1 if utf-8 fails
+                            value = param_bytes[12:12+str_length].decode('latin-1').rstrip('\x00 ')
+                            return {'value': value, 'total_length': total_length}
+                        except UnicodeDecodeError:
+                            # Last resort: escape invalid bytes
+                            value = param_bytes[12:12+str_length].decode('utf-8', errors='replace').rstrip('\x00 ')
+                            return {'value': value, 'total_length': total_length}
+                else:
+                    return {'value': '', 'total_length': total_length}
+                    
+            except struct.error:
+                return {'value': 'corrupt_string_header', 'total_length': 12}
         
         return {'value': '', 'total_length': 12}
     
@@ -196,6 +300,33 @@ class PCFParser:
                 return {'value': values, 'total_length': total_length}
         
         return {'value': [], 'total_length': 12}
+    
+    def _is_valid_parameter(self, param: Dict[str, Any]) -> bool:
+        """Validate if a parameter looks reasonable"""
+        if not param:
+            return False
+        
+        param_id = param.get('parameter_id', 0)
+        param_type = param.get('parameter_type', 0)
+        
+        # Skip obvious padding/corruption
+        if param_id == 0 and param_type == 0:
+            return False
+            
+        # Skip parameters with extremely large IDs (likely corruption)
+        if param_id > 0xFFFFFF:  # 24-bit limit for reasonable parameter IDs
+            return False
+            
+        # Skip parameters with unreasonable types
+        if param_type > 10000:  # Much larger than any known PCF type
+            return False
+            
+        # Parameter name check
+        param_name = param.get('parameter_name', '')
+        if param_name.startswith('UNKNOWN_PARAM') and param_id > 100000000:
+            return False  # Skip obviously corrupted large unknown parameters
+            
+        return True
     
     def get_parameter_name(self, param_id: int) -> str:
         """Get human-readable parameter name from parameter ID"""
@@ -234,9 +365,9 @@ class PCFParser:
             try:
                 if param_name == 'MQCA_Q_NAME' and isinstance(value, str):
                     operations['queue_name'] = value.strip()
-                elif param_name in ['MQIA_GET_COUNT'] and isinstance(value, int):
+                elif param_name in ['MQIA_GET_COUNT', 'MQIAMO_GETS', 'MQIA_MSG_DEQ_COUNT'] and isinstance(value, int):
                     operations['get_count'] = value
-                elif param_name in ['MQIA_PUT_COUNT'] and isinstance(value, int):
+                elif param_name in ['MQIA_PUT_COUNT', 'MQIAMO_PUTS', 'MQIA_MSG_ENQ_COUNT'] and isinstance(value, int):
                     operations['put_count'] = value
                 elif param_name in ['MQIA_BROWSE_COUNT'] and isinstance(value, int):
                     operations['browse_count'] = value
@@ -252,9 +383,9 @@ class PCFParser:
                     operations['current_depth'] = value
                 elif param_name in ['MQIA_MAX_Q_DEPTH'] and isinstance(value, int):
                     operations['max_depth'] = value
-                elif param_name in ['MQIA_PUT_BYTES'] and isinstance(value, int):
+                elif param_name in ['MQIA_PUT_BYTES', 'MQIAMO_PUT_BYTES'] and isinstance(value, int):
                     operations['put_bytes'] = value
-                elif param_name in ['MQIA_GET_BYTES'] and isinstance(value, int):
+                elif param_name in ['MQIA_GET_BYTES', 'MQIAMO_GET_BYTES'] and isinstance(value, int):
                     operations['get_bytes'] = value
                 elif param_name in ['MQIA_PUT_TIME'] and isinstance(value, int):
                     operations['put_time'] = value
@@ -299,13 +430,13 @@ class PCFParser:
                 continue
                 
             try:
-                if param_name in ['MQCACH_CHANNEL_NAME'] and isinstance(value, str):
+                if param_name in ['MQCACH_CHANNEL_NAME', 'MQCA_CHANNEL_NAME'] and isinstance(value, str):
                     connection_info['channel_name'] = value.strip()
-                elif param_name in ['MQCACH_CONNECTION_NAME'] and isinstance(value, str):
+                elif param_name in ['MQCACH_CONNECTION_NAME', 'MQCA_CONNECTION_NAME'] and isinstance(value, str):
                     connection_info['connection_name'] = value.strip()
                 elif param_name in ['MQCA_APPL_NAME'] and isinstance(value, str):
                     connection_info['application_name'] = value.strip()
-                elif param_name in ['MQCACH_USER_ID'] and isinstance(value, str):
+                elif param_name in ['MQCACH_USER_ID', 'MQCA_USER_ID'] and isinstance(value, str):
                     connection_info['user_id'] = value.strip()
                 elif param_name in ['MQIA_CONNECT_COUNT'] and isinstance(value, int):
                     connection_info['connect_count'] = value

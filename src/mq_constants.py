@@ -1,13 +1,10 @@
 """
 IBM MQ Constants for PCF (Programmable Command Format) Message Parsing
 
-Based on the IBM MQ Go implementation reference:
-https://github.com/skatul/ibmmq-go-stat-otel
-
 These constants are used for parsing PCF messages from IBM MQ statistics and accounting queues.
 """
 
-# PCF Command Format Types (MQCFT_*)
+# PCF Command Format Types (MQCFT_*) - IBM MQ 9.4.x Documentation
 MQCFT_NONE = 0
 MQCFT_COMMAND = 1
 MQCFT_RESPONSE = 2
@@ -28,8 +25,12 @@ MQCFT_XR_MSG = 17
 MQCFT_XR_ITEM = 18
 MQCFT_XR_SUMMARY = 19
 MQCFT_GROUP = 20
-MQCFT_STATISTICS = 21
-MQCFT_ACCOUNTING = 22
+MQCFT_STATISTICS_MQI = 21        # Statistics MQI
+MQCFT_STATISTICS_Q = 22          # Statistics Queue
+MQCFT_STATISTICS_CHANNEL = 23    # Statistics Channel
+MQCFT_ACCOUNTING_MQI = 24        # Accounting MQI
+MQCFT_ACCOUNTING_Q = 25          # Accounting Queue
+MQCFT_ACCOUNTING_CONN = 26       # Accounting Connection
 
 # Statistics Types (MQCMD_*)
 MQCMD_STATISTICS_MQI = 112      # 0x70
@@ -46,6 +47,8 @@ MQCA_Q_MGR_NAME = 2002          # Queue manager name
 MQCA_CHANNEL_NAME = 3501        # Channel name
 MQCA_CONNECTION_NAME = 3502     # Connection name
 MQCA_APPL_NAME = 2024           # Application name
+MQCA_USER_ID = 2068             # User ID
+MQCA_USER_DATA = 2064           # User data
 
 # Queue Attributes (MQIA_*)
 MQIA_Q_TYPE = 20                # Queue type
@@ -58,18 +61,24 @@ MQIA_HIGH_Q_DEPTH = 36          # High queue depth
 MQIA_MSG_DEQ_COUNT = 38         # Messages dequeued (GET count)
 MQIA_MSG_ENQ_COUNT = 37         # Messages enqueued (PUT count)
 
-# Channel Statistics (MQIACH_*)
-MQIACH_MSGS = 1501              # Channel messages
-MQIACH_BYTES = 1502             # Channel bytes
-MQIACH_BATCHES = 1503           # Channel batches
+# Channel Statistics (MQIACH_*) - IBM MQ Documentation
+MQIACH_MSGS = 1327              # Channel messages
+MQIACH_BYTES = 1328             # Channel bytes  
+MQIACH_BATCHES = 1329           # Channel batches
+MQIACH_CURRENT_MSGS = 1330      # Current messages on channel
+MQIACH_CHANNEL_NAME = 1318      # Channel name for statistics
+MQIACH_CONNECTION_NAME = 1319   # Connection name for channel
 
-# MQI Statistics (MQIAMO_*) - Note: some IDs conflict with MQIA_*, prioritizing MQIA_*
+# MQI Statistics (MQIAMO_*) - IBM MQ Accounting/Monitoring
 MQIAMO_OPENS = 10003            # MQI opens (avoiding conflict with MQIA_CURRENT_Q_DEPTH)
-MQIAMO_CLOSES = 4               # MQI closes
+MQIAMO_CLOSES = 4               # MQI closes  
 MQIAMO_PUTS = 17                # MQI puts
 MQIAMO_GETS = 18                # MQI gets
+MQIAMO_PUT_BYTES = 19           # Bytes put
+MQIAMO_GET_BYTES = 20           # Bytes retrieved
 MQIAMO_COMMITS = 12             # MQI commits
 MQIAMO_BACKOUTS = 13            # MQI backouts
+MQIAMO_BROWSES = 21             # Browse operations
 
 # Time and Control Parameters (MQCACF_*, MQIACF_*)
 MQCACF_COMMAND_TIME = 3603      # Command time
@@ -99,6 +108,18 @@ PARAMETER_NAMES = {
     MQIACH_MSGS: 'MQIACH_MSGS',
     MQIACH_BYTES: 'MQIACH_BYTES',
     MQIACH_BATCHES: 'MQIACH_BATCHES',
+    MQIACH_CURRENT_MSGS: 'MQIACH_CURRENT_MSGS',
+    MQIACH_CHANNEL_NAME: 'MQIACH_CHANNEL_NAME',
+    MQIACH_CONNECTION_NAME: 'MQIACH_CONNECTION_NAME',
+    
+    # User Information
+    MQCA_USER_ID: 'MQCA_USER_ID',
+    MQCA_USER_DATA: 'MQCA_USER_DATA',
+    
+    # Accounting Byte Transfers
+    MQIAMO_PUT_BYTES: 'MQIAMO_PUT_BYTES',
+    MQIAMO_GET_BYTES: 'MQIAMO_GET_BYTES',
+    MQIAMO_BROWSES: 'MQIAMO_BROWSES',
     
     # MQI Statistics
     10003: 'MQIAMO_OPENS',  # Avoiding conflict with MQIA_CURRENT_Q_DEPTH (3)
@@ -210,14 +231,21 @@ CHANNEL_STATUSES = {
     13: 'INITIALIZING'
 }
 
-# Message Type Mapping
+# Message Type Mapping - IBM MQ Documentation
 MESSAGE_TYPES = {
-    MQCFT_STATISTICS: 'statistics',
-    MQCFT_ACCOUNTING: 'accounting',
+    MQCFT_STATISTICS_MQI: 'statistics_mqi',
+    MQCFT_STATISTICS_Q: 'statistics_queue', 
+    MQCFT_STATISTICS_CHANNEL: 'statistics_channel',
+    MQCFT_ACCOUNTING_MQI: 'accounting_mqi',
+    MQCFT_ACCOUNTING_Q: 'accounting_queue',
+    MQCFT_ACCOUNTING_CONN: 'accounting_connection',
     MQCFT_EVENT: 'event',
     MQCFT_COMMAND: 'command',
     MQCFT_RESPONSE: 'response',
-    MQCFT_REPORT: 'report'
+    MQCFT_REPORT: 'report',
+    # Legacy mappings for backward compatibility
+    21: 'statistics',
+    22: 'accounting',
 }
 
 def get_parameter_name(param_id: int) -> str:
