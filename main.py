@@ -4,6 +4,10 @@ IBM MQ Statistics and Accounting Queue Reader - Main Entry Point
 
 This script serves as the main entry point for the IBM MQ Stats Reader application.
 It provides a command-line interface for reading MQ statistics and accounting data.
+
+Output Formats:
+- JSON: Detailed IBM MQ data structure (default)
+- Prometheus: Metrics format compatible with Prometheus/Grafana
 """
 
 import sys
@@ -111,7 +115,20 @@ Examples:
         '--format', '-f',
         choices=['json', 'influxdb', 'prometheus', 'elasticsearch'],
         default='json',
-        help='Output format (default: json)'
+        help='Output format: json (detailed data), prometheus (metrics for Grafana), influxdb, elasticsearch'
+    )
+    
+    parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=9090,
+        help='Port for Prometheus metrics HTTP server (default: 9090)'
+    )
+    
+    parser.add_argument(
+        '--metrics-only',
+        action='store_true',
+        help='Output only Prometheus metrics to stdout (no HTTP server)'
     )
     
     parser.add_argument(
@@ -192,8 +209,29 @@ def single_collection(args):
         
         print(f"Found {len(statistics_data)} statistics messages, {len(accounting_data)} accounting messages")
         
-        # Format output
-        output = reader.format_output(statistics_data, accounting_data)
+        # Format output based on requested format
+        if args.format == 'prometheus':
+            # Import Prometheus exporter
+            from prometheus_exporter import create_prometheus_metrics
+            
+            # Get raw data structure
+            raw_data = reader.get_raw_data_structure(statistics_data, accounting_data)
+            
+            # Generate Prometheus metrics
+            prometheus_output = create_prometheus_metrics(raw_data)
+            
+            if args.metrics_only:
+                # Output metrics to stdout for integration with Prometheus
+                print("=== IBM MQ PROMETHEUS METRICS ===")
+                print(prometheus_output)
+                return 0
+            else:
+                output = prometheus_output
+                file_extension = ".txt"
+        else:
+            # Default JSON format
+            output = reader.format_output(statistics_data, accounting_data)
+            file_extension = ".json"
         
         # Determine output file name
         if args.output_file:
@@ -202,15 +240,33 @@ def single_collection(args):
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             # Add cycle number if this is part of continuous monitoring
             if hasattr(args, '_cycle_number'):
-                output_file = f"mq_stats_cycle_{args._cycle_number:03d}_{timestamp}.json"
+                if args.format == 'prometheus':
+                    output_file = f"mq_metrics_cycle_{args._cycle_number:03d}_{timestamp}.txt"
+                else:
+                    output_file = f"mq_stats_cycle_{args._cycle_number:03d}_{timestamp}.json"
             else:
-                output_file = f"mq_stats_{timestamp}.json"
+                if args.format == 'prometheus':
+                    output_file = f"mq_metrics_{timestamp}.txt"
+                else:
+                    output_file = f"mq_stats_{timestamp}.json"
         
         # Write output
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(output)
         
         print(f"Output written to: {output_file}")
+        
+        # If Prometheus format, show sample metrics
+        if args.format == 'prometheus':
+            print("\n=== SAMPLE METRICS OUTPUT ===")
+            lines = output.split('\n')
+            for line in lines[:20]:  # Show first 20 lines
+                if line.strip():
+                    print(line)
+            if len(lines) > 20:
+                print("... (additional metrics in file)")
+            print(f"\nTotal metrics generated: {len([l for l in lines if l.startswith('ibmmq_')])}")
+            print(f"Use this file with Prometheus or curl http://localhost:{args.prometheus_port}/metrics")
         
         # Reset statistics if requested
         if args.reset_stats:

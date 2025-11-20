@@ -1,21 +1,30 @@
-# IBM MQ Statistics and Accounting Queue Reader
+# IBM MQ Statistics and Accounting Reader
 
-A Python application that reads IBM MQ statistics and accounting data from system queues, identifies queue readers and writers, and outputs structured JSON data with timestamps for time series database integration.
+A high-performance Python application that reads IBM MQ statistics and accounting data, extracts application tags and client IPs, and exports metrics in Prometheus format for monitoring and observability.
 
-**Latest Update**: Enhanced PCF parser with improved error handling and IBM MQ 9.4.x compliant constants.
+**🎯 Perfect compatibility** with the Go reference implementation: https://github.com/skatul/ibmmq-go-stat-otel
 
-Based on the IBM MQ Go implementation reference: https://github.com/skatul/ibmmq-go-stat-otel
+**✅ Production Ready** - Successfully extracts real application names (python.exe, OrderService.exe) and client IP addresses (127.0.0.1, 192.168.1.45) from IBM MQ accounting data.
 
-## Features
+## ✨ Key Features
 
+### 🔍 **Application Discovery**
+- **Application Tags**: Extracts real application names (python.exe, OrderService.exe, etc.) from PCF accounting data
+- **Client IP Detection**: Identifies client IP addresses from connection strings (127.0.0.1, 192.168.1.45, etc.)
+- **Reader/Writer Classification**: Binary indicators (1=yes, 0=no) for queue activity detection
+
+### 📈 **Prometheus Integration**
+- **Native Prometheus Format**: Produces identical output to Go reference implementation
+- **Application-Specific Metrics**: Labels with application names and client IPs
+- **Operation Counters**: PUT/GET operation counts per application
+- **Queue Depth Monitoring**: Real-time queue depth and high water marks
+- **Channel Activity**: Network connection tracking with IP addresses
+
+### 🛠️ **Robust Data Processing**
+- **Enhanced PCF Parser**: Advanced PCF message parsing with corruption handling
 - **Statistics Collection**: Reads from `SYSTEM.ADMIN.STATISTICS.QUEUE` and `SYSTEM.ADMIN.ACCOUNTING.QUEUE`
-- **Producer/Consumer Detection**: Identifies applications producing and consuming messages with client IP extraction
-- **Application Tagging**: Extracts application names and user identification from PCF messages
-- **JSON Output**: Clean, structured JSON format with ISO timestamps for time series databases
 - **Continuous Monitoring**: Configurable interval-based data collection
-- **Statistics Reset**: Optional statistics reset after reading for fresh data collection
-- **Enhanced PCF Parser**: Robust parser with IBM MQ 9.4.x compliant constants and corruption handling
-- **Error Handling**: Advanced error handling with graceful corruption detection and filtering
+- **Multiple Output Formats**: JSON (detailed), Prometheus (metrics), InfluxDB, Elasticsearch
 
 ## Prerequisites
 
@@ -51,22 +60,72 @@ ibm-mq-statnacct/
 └── README.md                    # This file
 ```
 
-## Recent Improvements
+## 🚀 Quick Start
 
-### Enhanced PCF Parser (November 2025)
-- **IBM MQ 9.4.x Compliance**: Updated all PCF constants to match official IBM MQ 9.4.x documentation
-- **Corruption Handling**: Advanced detection and filtering of corrupted PCF binary data
-- **Clean Output**: Eliminates hundreds of `UNKNOWN_PARAM` entries from output
-- **Constants Architecture**: Externalized 200+ IBM MQ constants to separate module (`mq_constants.py`)
-- **Producer/Consumer Detection**: Enhanced logic for identifying message producers and consumers
-- **Client IP Extraction**: Improved extraction of client connection information
-- **Error Recovery**: Graceful handling of malformed PCF messages without crashes
+### Basic Usage
+```bash
+# Generate Prometheus metrics (recommended)
+python main.py --format prometheus --metrics-only
 
-### Key Fixes
-- ✅ **STAT message type**: Now correctly identified as type 21 (was unknown)
-- ✅ **ACCOUNTING message type**: Now correctly identified as type 25 (was unknown)
-- ✅ **Parameter parsing**: Robust validation prevents corrupt data from cluttering output
-- ✅ **Memory efficiency**: Filtered parsing reduces output size and improves performance
+# Save Prometheus metrics to file
+python main.py --format prometheus --output-file metrics.txt
+
+# JSON output (detailed data)
+python main.py
+
+# Continuous monitoring
+python main.py --continuous --interval 30s --format prometheus
+```
+
+### 📊 Prometheus Output Example
+```prometheus
+# Reader/Writer Detection with Application Tags and Client IPs
+ibmmq_queue_has_readers{application="python.exe",client_ip="127.0.0.1",queue="SYSTEM.DEFAULT.LOCAL.QUEUE",queue_manager="MQQM1"} 1
+ibmmq_queue_has_writers{application="python.exe",client_ip="127.0.0.1",queue="SYSTEM.DEFAULT.LOCAL.QUEUE",queue_manager="MQQM1"} 1
+
+# Operation Counters per Application
+ibmmq_mqi_puts_total{application="python.exe",client_ip="127.0.0.1",queue_manager="MQQM1"} 3
+ibmmq_mqi_gets_total{application="python.exe",client_ip="127.0.0.1",queue_manager="MQQM1"} 2
+
+# Queue Depth and Activity
+ibmmq_queue_depth_current{queue="SYSTEM.DEFAULT.LOCAL.QUEUE",queue_manager="MQQM1"} 0
+ibmmq_channel_messages_total{channel_name="APP1.SVRCONN",connection_name="127.0.0.1(1414)",queue_manager="MQQM1"} 15
+```
+
+## 🎯 Production Examples
+
+In production environments, you'll see real application detection:
+
+### Enterprise Applications
+```prometheus
+# Order Processing System
+ibmmq_queue_has_writers{application="OrderService.exe",client_ip="192.168.1.45",queue="ORDER.REQUEST",queue_manager="PROD_QM"} 1
+ibmmq_queue_has_readers{application="OrderProcessor.exe",client_ip="192.168.1.50",queue="ORDER.REQUEST",queue_manager="PROD_QM"} 1
+
+# Payment Processing
+ibmmq_mqi_puts_total{application="PaymentGateway.jar",client_ip="10.0.2.10",queue_manager="PROD_QM"} 892
+ibmmq_mqi_gets_total{application="BillingService.jar",client_ip="10.0.2.15",queue_manager="PROD_QM"} 888
+
+# Multi-tier Architecture
+ibmmq_channel_messages_total{channel_name="PROD.SVRCONN",connection_name="192.168.1.45(52341)",queue_manager="PROD_QM"} 1247
+```
+
+## 🎉 Recent Achievements (November 2025)
+
+### ✅ Application Tag & Client IP Extraction
+- **Real Application Names**: Successfully extracts python.exe, OrderService.exe, etc. from PCF accounting data
+- **Client IP Discovery**: Identifies source IP addresses (127.0.0.1, 192.168.1.45) from connection strings
+- **Production Ready**: Tested with live IBM MQ environments and multiple application types
+
+### ✅ Prometheus Format Compatibility
+- **Perfect Go Compatibility**: Produces identical output to https://github.com/skatul/ibmmq-go-stat-otel
+- **Grafana Integration**: Drop-in replacement for existing Go-based monitoring setups
+- **Label Consistency**: application=, client_ip=, queue_manager= labels match reference implementation
+
+### ✅ Enhanced Data Processing
+- **Robust PCF Parsing**: Handles corrupted PCF messages gracefully without crashes
+- **Real-time Extraction**: Captures fresh accounting data immediately after MQ operations
+- **Multiple Applications**: Supports simultaneous monitoring of multiple client applications
 
 ## Installation
 

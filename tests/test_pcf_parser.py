@@ -185,9 +185,11 @@ class TestPCFParser:
 
     def test_parse_string_parameter(self):
         """Test parsing string parameter"""
-        # Create string parameter: header + length + string
+        # Create a valid string parameter (MQCA_Q_NAME with value 'TEST.QUEUE')
         test_string = b'TEST.QUEUE'
-        param_bytes = bytearray(12 + len(test_string))
+        # Calculate 4-byte aligned length
+        aligned_length = ((len(test_string) + 3) // 4) * 4
+        param_bytes = bytearray(12 + aligned_length)
         param_bytes[0:4] = (2016).to_bytes(4, 'big')  # Parameter ID
         param_bytes[4:8] = (4).to_bytes(4, 'big')     # String type
         param_bytes[8:12] = len(test_string).to_bytes(4, 'big')  # String length
@@ -196,7 +198,7 @@ class TestPCFParser:
         result = self.parser._parse_string_parameter(bytes(param_bytes))
         
         assert result['value'] == 'TEST.QUEUE'
-        assert result['total_length'] == 12 + len(test_string)
+        assert result['total_length'] == 12 + aligned_length
 
     def test_parse_malformed_message(self):
         """Test parsing malformed PCF message"""

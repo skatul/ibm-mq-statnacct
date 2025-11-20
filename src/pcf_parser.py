@@ -120,8 +120,20 @@ class PCFParser:
                 'parameter_count': values[8]
             }
             
-            # Determine message type
-            header['message_type'] = mqc.get_message_type(header['structure_type'])
+            # Determine message type with enhanced corruption detection
+            msg_type = mqc.get_message_type(header['structure_type'])
+            header['message_type'] = msg_type
+            
+            # Add corruption analysis for better diagnostics
+            if header['structure_type'] == 369098752:  # 0x16000000
+                header['corruption_detected'] = True
+                header['corruption_info'] = 'PCF header corruption - likely byte alignment issue'
+                header['message_type'] = 'corrupted_pcf_data'
+            elif header['parameter_count'] > 1000000:  # Unrealistic parameter count
+                header['corruption_detected'] = True
+                header['corruption_info'] = f'Invalid parameter count: {header["parameter_count"]}'
+            else:
+                header['corruption_detected'] = False
             
             return header
             
