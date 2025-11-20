@@ -8,7 +8,7 @@ MQ_CONFIG = {
     "queue_manager": "MQQM1",
     "channel": "APP1.SVRCONN",
     "connection_name": "localhost(5200)",  # Default MQ port, adjust as needed
-    "user": "atulk",  # Set if authentication is required
+    "user": "",  # Set if authentication is required
     "password": ""  # Set if authentication is required
 }
 

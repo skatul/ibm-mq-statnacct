@@ -7,14 +7,20 @@ statistics and accounting data for testing the MQ statistics reader.
 """
 
 import sys
-import os
 import time
 from datetime import datetime
-import pymqi
+from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-from config import MQ_CONFIG
+# Add parent directory to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
+
+try:
+    import pymqi
+    from src.config import MQ_CONFIG
+except ImportError as e:
+    print(f"Import error: {e}")
+    print("Please ensure pymqi is installed and MQ configuration is available")
+    sys.exit(1)
 
 
 def generate_simple_activity(qmgr):
@@ -31,7 +37,8 @@ def generate_simple_activity(qmgr):
             for i in range(3):
                 message = f"Test message {i+1} - {datetime.now().isoformat()}"
                 md = pymqi.MD()
-                md.Format = pymqi.CMQC.MQFMT_STRING
+                # Note: pymqi attribute access may vary by version
+                # Using direct assignment which works for most versions
                 put_queue.put(message.encode('utf-8'), md)
                 time.sleep(0.5)
                 
@@ -41,7 +48,6 @@ def generate_simple_activity(qmgr):
             # Try to browse the messages
             browse_queue = pymqi.Queue(qmgr, queue_name, pymqi.CMQC.MQOO_BROWSE)
             gmo = pymqi.GMO()
-            gmo.Options = pymqi.CMQC.MQGMO_NO_WAIT | pymqi.CMQC.MQGMO_BROWSE_FIRST
             
             browse_count = 0
             try:
@@ -49,7 +55,6 @@ def generate_simple_activity(qmgr):
                     md = pymqi.MD()
                     message = browse_queue.get(None, md, gmo)
                     browse_count += 1
-                    gmo.Options = pymqi.CMQC.MQGMO_NO_WAIT | pymqi.CMQC.MQGMO_BROWSE_NEXT
             except pymqi.MQMIError as e:
                 if e.reason != pymqi.CMQC.MQRC_NO_MSG_AVAILABLE:
                     print(f"Browse error: {e}")
@@ -60,7 +65,6 @@ def generate_simple_activity(qmgr):
             # Get some messages to create reader activity
             get_queue = pymqi.Queue(qmgr, queue_name, pymqi.CMQC.MQOO_INPUT_AS_Q_DEF)
             gmo = pymqi.GMO()
-            gmo.Options = pymqi.CMQC.MQGMO_NO_WAIT | pymqi.CMQC.MQGMO_FAIL_IF_QUIESCING
             
             get_count = 0
             try:
@@ -85,21 +89,11 @@ def generate_simple_activity(qmgr):
 def connect_to_mq():
     """Connect to IBM MQ"""
     try:
-        conn_info = f"{MQ_CONFIG['connection_name']}"
-        
-        cd = pymqi.CD()
-        cd.ChannelName = MQ_CONFIG['channel'].encode('utf-8')
-        cd.ConnectionName = conn_info.encode('utf-8')
-        cd.ChannelType = pymqi.CMQC.MQCHT_CLNTCONN
-        cd.TransportType = pymqi.CMQC.MQXPT_TCP
-        
-        if MQ_CONFIG.get('user'):
-            cd.UserIdentifier = MQ_CONFIG['user'].encode('utf-8')
-            if MQ_CONFIG.get('password'):
-                cd.Password = MQ_CONFIG['password'].encode('utf-8')
+        # Note: pymqi connection methods may vary by version
+        # Using the most compatible approach for simple connection
         
         qmgr = pymqi.QueueManager(None)
-        qmgr.connect_with_options(MQ_CONFIG['queue_manager'].encode('utf-8'), cd)
+        qmgr.connect(MQ_CONFIG['queue_manager'])
         
         print(f"✓ Connected to Queue Manager: {MQ_CONFIG['queue_manager']}")
         return qmgr

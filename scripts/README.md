@@ -4,15 +4,9 @@ This directory contains utility scripts and tools for the IBM MQ Stats Reader pr
 
 ## Scripts
 
-- `demo_sample_output.py` - Demonstrates expected JSON output format
-- `example_timeseries.py` - Examples for integrating with time series databases
+- `example_timeseries.py` - Examples for integrating with time series databases  
 - `run_mq_reader.bat` - Windows batch file to run the MQ stats reader
 - `run_mq_reader.ps1` - PowerShell script to run the MQ stats reader
-
-## Subdirectories
-
-### sample-stat-creation/
-Contains scripts for generating sample statistics and activity in IBM MQ queues for testing purposes.
 
 ## Usage
 
@@ -25,21 +19,17 @@ Contains scripts for generating sample statistics and activity in IBM MQ queues 
 .\scripts\run_mq_reader.bat
 
 # Direct Python execution
-python src\mq_stats_reader.py
-```
-
-### Generating Test Activity
-```bash
-# Generate sample activity in APP1.REQ and APP2.REQ
-python scripts\sample-stat-creation\simple_activity.py
-python scripts\sample-stat-creation\generate_activity.py
+python main.py
 ```
 
 ### Demo and Examples
 ```bash
-# View demo output format
-python scripts\demo_sample_output.py
-
 # See time series integration examples
 python scripts\example_timeseries.py
 ```
+
+## Note
+
+Demo scripts and activity generators have been moved to other directories:
+- **Demos**: See `demos/` directory for comprehensive demonstration scripts
+- **Activity Generators**: See `utils/` directory for MQ activity generation tools

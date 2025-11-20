@@ -7,14 +7,20 @@ that can be read by the MQ statistics reader.
 """
 
 import sys
-import os
 import time
 from datetime import datetime
-import pymqi
+from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-from config import MQ_CONFIG
+# Add parent directory to path for imports
+sys.path.append(str(Path(__file__).parent.parent))
+
+try:
+    import pymqi
+    from src.config import MQ_CONFIG
+except ImportError as e:
+    print(f"Import error: {e}")
+    print("Please ensure pymqi is installed and MQ configuration is available")
+    sys.exit(1)
 
 
 def create_test_queue(qmgr, queue_name):
