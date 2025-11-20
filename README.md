@@ -2,6 +2,8 @@
 
 A Python application that reads IBM MQ statistics and accounting data from system queues, identifies queue readers and writers, and outputs structured JSON data with timestamps for time series database integration.
 
+Based on the IBM MQ Go implementation reference: https://github.com/skatul/ibmmq-go-stat-otel
+
 ## Features
 
 - **Statistics Collection**: Reads from `SYSTEM.ADMIN.STATISTICS.QUEUE` and `SYSTEM.ADMIN.ACCOUNTING.QUEUE`

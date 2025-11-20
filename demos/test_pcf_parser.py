@@ -15,7 +15,7 @@ sys.path.append(str(parent_dir))
 sys.path.append(str(parent_dir / 'src'))
 
 # Import only the PCF parser, not the full MQ reader package
-from pcf_parser import PCFParser
+from src.pcf_parser import PCFParser
 
 
 def test_enhanced_parameter_resolution():
