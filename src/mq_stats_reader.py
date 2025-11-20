@@ -12,6 +12,7 @@ Date: November 2025
 import json
 import logging
 import sys
+import base64
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import pymqi
@@ -25,6 +26,21 @@ except ImportError:
     from config import MQ_CONFIG, QUEUE_CONFIG, STATS_CONFIG
     from pcf_parser import PCFParser
 
+
+class MQJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle bytes objects"""
+    
+    def default(self, obj):
+        if isinstance(obj, bytes):
+            try:
+                # Try to decode as UTF-8 first
+                return obj.decode('utf-8')
+            except UnicodeDecodeError:
+                # If that fails, encode as base64
+                return base64.b64encode(obj).decode('ascii')
+        elif hasattr(obj, '__dict__'):
+            return obj.__dict__
+        return super().default(obj)
 
 class MQStatsReader:
     """Main class for reading IBM MQ statistics and accounting data"""
@@ -72,11 +88,8 @@ class MQStatsReader:
             self.logger.info("Successfully connected to Queue Manager: %s", MQ_CONFIG['queue_manager'])
             return True
             
-        except pymqi.MQMIError as e:
+        except Exception as e:
             self.logger.error("Failed to connect to MQ: %s", e)
-            return False
-        except (ConnectionError, OSError) as e:
-            self.logger.error("Connection error during MQ connection: %s", e)
             return False
     
     def disconnect_from_mq(self):
@@ -237,7 +250,8 @@ class MQStatsReader:
                 "correlation_id": md.CorrelId.hex(),
                 "put_date": md.PutDate.decode('utf-8') if isinstance(md.PutDate, bytes) else str(md.PutDate),
                 "put_time": md.PutTime.decode('utf-8') if isinstance(md.PutTime, bytes) else str(md.PutTime),
-                "message_length": len(message)
+                "message_length": len(message),
+                "raw_data": message  # Store raw data for enhanced extraction
             }
             
             # Parse PCF message using the dedicated parser
@@ -251,6 +265,41 @@ class MQStatsReader:
                 
                 parsed_data["queue_operations"] = queue_ops
                 parsed_data["connection_info"] = conn_info
+                
+                # Enhanced extraction for application tags and client IPs
+                try:
+                    from enhanced_pcf_extractor import EnhancedPCFExtractor
+                    extractor = EnhancedPCFExtractor()
+                    enhanced_info = extractor.extract_application_info(message)
+                    
+                    if enhanced_info['raw_data_found']:
+                        # Update connection info with enhanced data
+                        parsed_data["connection_info"].update({
+                            "application_name": enhanced_info.get('application_name', 'unknown'),
+                            "client_ip": enhanced_info.get('client_ip', 'unknown'),
+                            "connection_name": enhanced_info.get('connection_name', 'unknown'),
+                            "extraction_method": enhanced_info.get('extraction_method', 'none')
+                        })
+                        
+                        # Update queue operations with reader/writer info
+                        app_name = enhanced_info.get('application_name', 'unknown')
+                        if app_name != 'unknown':
+                            # Determine reader/writer status based on operations
+                            operations = parsed_data.get("operations", {})
+                            put_count = operations.get("put_count", 0)
+                            get_count = operations.get("get_count", 0)
+                            
+                            parsed_data["queue_operations"].update({
+                                "has_readers": get_count > 0,
+                                "has_writers": put_count > 0
+                            })
+                            
+                        self.logger.debug(f"Enhanced extraction successful: {app_name} from {enhanced_info.get('client_ip', 'unknown')}")
+                    
+                except ImportError:
+                    self.logger.warning("Enhanced PCF extractor not available")
+                except Exception as e:
+                    self.logger.warning(f"Enhanced extraction failed: {e}")
                 
                 # Legacy format for compatibility
                 parsed_data["connection_info_legacy"] = {
@@ -395,7 +444,7 @@ class MQStatsReader:
         
         format_type = output_format or STATS_CONFIG.get("output_format", "json")
         if format_type.lower() == "json":
-            return json.dumps(output_data, indent=2, ensure_ascii=False)
+            return json.dumps(output_data, indent=2, ensure_ascii=False, cls=MQJSONEncoder)
         else:
             return str(output_data)
     
@@ -454,6 +503,28 @@ class MQStatsReader:
         summary["active_connections"] = list(summary["active_connections"])
         
         return summary
+    
+    def get_raw_data_structure(self, statistics_data: List[Dict], accounting_data: List[Dict]) -> Dict[str, Any]:
+        """
+        Get the raw data structure for external formatters (e.g., Prometheus exporter)
+        
+        This method returns the same data structure as format_output but as a dictionary
+        instead of JSON string, allowing external formatters to process the data.
+        """
+        collection_info = {
+            "timestamp": datetime.now().isoformat(),
+            "queue_manager": MQ_CONFIG["queue_manager"],
+            "channel": MQ_CONFIG["channel"], 
+            "statistics_count": len(statistics_data),
+            "accounting_count": len(accounting_data)
+        }
+        
+        return {
+            "collection_info": collection_info,
+            "statistics_data": statistics_data,
+            "accounting_data": accounting_data,
+            "summary": self._generate_summary(statistics_data, accounting_data)
+        }
     
     def run(self) -> Optional[str]:
         """Main execution method"""

@@ -254,6 +254,12 @@ def get_parameter_name(param_id: int) -> str:
 
 def get_message_type(structure_type: int) -> str:
     """Determine the type of PCF message based on structure type"""
+    # Handle specific corruption patterns
+    if structure_type == 369098752:  # 0x16000000 - common corruption pattern
+        return 'corrupted_pcf_header'
+    elif structure_type > 1000000:  # Very large values suggest corruption
+        return f'corrupted_type_{structure_type:08X}'
+    
     return MESSAGE_TYPES.get(structure_type, f'unknown_type_{structure_type}')
 
 def get_channel_type_name(channel_type: int) -> str:
